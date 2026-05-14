@@ -7,6 +7,8 @@
 /* The osdev wiki assumes you're running linux, but macos would be __APPLE__, if its windows who f*cking cares
 	 it doesnt deserve to run anyway */
 
+#define PIXEL uint32_t   /* pixel pointer */
+
 #if defined(__linux__)
 #error "You are not using a cross-compiler, you will most certainly run into trouble"
 #endif
@@ -16,25 +18,20 @@
 #error "This tutorial needs to be compiled with a ix86-elf compiler"
 #endif
 
-typedef struct {
-    uint32_t magic;         /* magic bytes to identify PSF */
-    uint32_t version;       /* zero */
-    uint32_t headersize;    /* offset of bitmaps in file, 32 */
-    uint32_t flags;         /* 0 if there's no unicode table */
-    uint32_t numglyph;      /* number of glyphs */
-    uint32_t bytesperglyph; /* size of each glyph */
-    uint32_t height;        /* height in pixels */
-    uint32_t width;         /* width in pixels */
-} PSF_font;
+struct PSF1_Header {
+    uint16_t magic; // Magic bytes for identification.
+    uint8_t font_mode; // PSF font mode.
+    uint8_t character_height; // PSF character size.
+} ;
 
 //make it readable without comments
-extern uint32_t* boot_info;
 extern char _binary_font_psf_start;
+extern char _binary_font_psf_size_;
 
 
 struct framebuffer_t {
   uint32_t *address;
-  uint32_t pitch;
+  uint32_t bytes_per_fb_row;
   uint32_t width;
   uint32_t height;
   uint8_t bpp;
@@ -107,7 +104,7 @@ bool read_boot_info_multiboot2(unsigned long multiboot2_magic, unsigned long mul
 			//Removes redunandt instructions
 			FRAMEBUFFER = (struct framebuffer_t){
 				.address = (uint32_t *)(uintptr_t)  tagfb->common.framebuffer_addr,
-				.pitch   = tagfb->common.framebuffer_pitch,
+				.bytes_per_fb_row = tagfb->common.framebuffer_pitch,
 				.width   = tagfb->common.framebuffer_width,
 				.height  = tagfb->common.framebuffer_height,
 				.bpp     = tagfb->common.framebuffer_bpp
@@ -161,43 +158,43 @@ bool read_boot_info_multiboot2(unsigned long multiboot2_magic, unsigned long mul
 
 
 						//this is just drawing a line based on the bpp value, diagonal line. no config shit
-            for (i = 0; i < tagfb->common.framebuffer_width
-                   && i < tagfb->common.framebuffer_height; i++)
-              {
-                switch (tagfb->common.framebuffer_bpp)
-                  {
-                  case 8:
-                    {
-                      multiboot_uint8_t *pixel = fb
-                        + tagfb->common.framebuffer_pitch * i + i;
-                      *pixel = color;
-                    }
-                    break;
-                  case 15:
-                  case 16:
-                    {
-                      multiboot_uint16_t *pixel
-                        = fb + tagfb->common.framebuffer_pitch * i + 2 * i;
-                      *pixel = color;
-                    }
-                    break;
-                  case 24:
-                    {
-                      multiboot_uint32_t *pixel
-                        = fb + tagfb->common.framebuffer_pitch * i + 3 * i;
-                      *pixel = (color & 0xffffff) | (*pixel & 0xff000000);
-                    }
-                    break;
-
-                  case 32:
-                    {
-                      multiboot_uint32_t *pixel
-                        = fb + tagfb->common.framebuffer_pitch * i + 4 * i;
-                      *pixel = color;
-                    }
-                    break;
-                  }
-              }
+            /*for (i = 0; i < tagfb->common.framebuffer_width*/
+            /*       && i < tagfb->common.framebuffer_height; i++)*/
+            /*  {*/
+            /*    switch (tagfb->common.framebuffer_bpp)*/
+            /*      {*/
+            /*      case 8:*/
+            /*        {*/
+            /*          multiboot_uint8_t *pixel = fb*/
+            /*            + tagfb->common.framebuffer_pitch * i + i;*/
+            /*          *pixel = color;*/
+            /*        }*/
+            /*        break;*/
+            /*      case 15:*/
+            /*      case 16:*/
+            /*        {*/
+            /*          multiboot_uint16_t *pixel*/
+            /*            = fb + tagfb->common.framebuffer_pitch * i + 2 * i;*/
+            /*          *pixel = color;*/
+            /*        }*/
+            /*        break;*/
+            /*      case 24:*/
+            /*        {*/
+            /*          multiboot_uint32_t *pixel*/
+            /*            = fb + tagfb->common.framebuffer_pitch * i + 3 * i;*/
+            /*          *pixel = (color & 0xffffff) | (*pixel & 0xff000000);*/
+            /*        }*/
+            /*        break;*/
+            /**/
+            /*      case 32:*/
+            /*        {*/
+            /*          multiboot_uint32_t *pixel*/
+            /*            = fb + tagfb->common.framebuffer_pitch * i + 4 * i;*/
+            /*          *pixel = color;*/
+            /*        }*/
+            /*        break;*/
+            /*      }*/
+            /*  }*/
             break;
           }
 
@@ -210,61 +207,67 @@ bool read_boot_info_multiboot2(unsigned long multiboot2_magic, unsigned long mul
 	return true;
 }    
 
+//psf1 has a width of 8 bits and character size bits height. so its character size width 
+char* font_glyphs;
+uint8_t character_height;
+uint8_t character_width = 8;
 
-/*size_t strlen(const char* str) */
-/*{*/
-/*	size_t len = 0;*/
-/*	//null terminator '/0' is just 0 which is falsy*/
-/*	while (str[len])*/
-/*		len++;*/
-/*	return len;*/
-/*}*/
-/**/
-/*size_t terminal_row;*/
-/*size_t terminal_column;*/
-/*uint8_t bg_color;*/
-/*uint8_t fg_color;*/
-/**/
-/*void terminal_initialize(void) */
-/*{*/
-/*	terminal_row = 0;*/
-/*	terminal_column = 0;*/
-/*	bg_color = vga_entry_color(VGA_COLOR_LIGHT_GREY, VGA_COLOR_BLACK);*/
-/**/
-/*	for (size_t y = 0; y < FRAMEBUFFER_HEIGHT; y++) {*/
-/*		for (size_t x = 0; x < FRAMEBUFFER_WIDTH; x++) {*/
-/*			const size_t index = y * FRAMEBUFFER_WIDTH + x;*/
-/*			//FRAMEBUFFER_ADDRESS[index] = vga_entry(' ', bg_color);*/
-/*		}*/
-/*	}*/
-/*}*/
-/**/
-/*//just to write the character at the current column and row. */
-/*void terminal_putchar(char c) */
-/*{*/
-/*	PSF_font *font = (psf_font)&binary_psf_font_start;*/
-/**/
-/*	//the character will represent a number, cast it to a number?*/
-/*	unsigned char *glyph =  (unsigned char*)&_binary_font_psf_start + font->headersize + (c>0&&c<fonts->numglyph?c:0)*fonts->bytesperglyph*/
-/**/
-/*}*/
-/**/
-/*void terminal_writestring(const char* data) */
-/*{*/
-/*	for (size_t i = 0; i < strlen(data); i++)*/
-/*		terminal_putchar(data[i]);*/
-/*}*/
+
+bool parse_font(){
+	struct PSF1_Header *header = (struct PSF1_Header*)&_binary_font_psf_start;
+	if(header->magic != 0x0436)
+		return false;
+
+	character_height = header->character_height;
+	font_glyphs = (char*)header + sizeof(struct PSF1_Header);
+
+	return true;
+}
+
+int cx = 0;
+int cy = 0;
+
+uint32_t fg = 0x00FFFFFF;
+uint32_t bg = 0x00000000;
+
+//4 bytes per pixel. 32 bbp. - i can represent more colors
+void put_pixel(int pos_x, int pos_y, uint32_t color)
+{
+    uint32_t* location = (uint32_t*)((char*)FRAMEBUFFER.address + FRAMEBUFFER.bytes_per_fb_row * pos_y + pos_x * 4);
+    *location = color;
+}
+
+
+
+void draw_char(char input){
+	//lets get the start byte for that glyph. char = 0 -> glyph one and so one
+	char* starting_glyph_byte = (font_glyphs + input*character_height);
+
+	for(size_t y = 0; y < character_height; y++){
+		for(size_t x = 0; x < character_width; x ++){
+			if(*(starting_glyph_byte + y) & (0x80 >> x))
+				put_pixel(cx + x, cy + y, fg);
+		}
+	}
+}
+
+void draw_string(char* input){
+	while(*input){
+		draw_char(*input);
+		input++;
+		cx += character_width;
+	}
+
+}
 
 void kernel_main(unsigned long multiboot2_magic, unsigned long multiboot2_info_addr) 
 {
-	bool success = read_boot_info_multiboot2(multiboot2_magic, multiboot2_info_addr);
-
-	if(!success)
+	bool boot_success = read_boot_info_multiboot2(multiboot2_magic, multiboot2_info_addr);
+	bool font_success = parse_font();
+	
+	if(!boot_success || !font_success)
 		return;
 
-	/* Initialize terminal interface */
-	/*terminal_initialize();*/
-
 	/* Newline support is left as an exercise. */
-	/*terminal_writestring("Hello, kernel World!\n");*/
+	draw_string("Hello, Kernel World!\n");
 }
