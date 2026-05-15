@@ -243,6 +243,12 @@ void draw_char(char input){
 	//lets get the start byte for that glyph. char = 0 -> glyph one and so one
 	char* starting_glyph_byte = (font_glyphs + input*character_height);
 
+	if(input == '\n'){
+		cx = 0;
+		cy += character_height;
+		return;
+	}
+
 	for(size_t y = 0; y < character_height; y++){
 		for(size_t x = 0; x < character_width; x ++){
 			if(*(starting_glyph_byte + y) & (0x80 >> x))
@@ -268,6 +274,5 @@ void kernel_main(unsigned long multiboot2_magic, unsigned long multiboot2_info_a
 	if(!boot_success || !font_success)
 		return;
 
-	/* Newline support is left as an exercise. */
-	draw_string("Hello, Kernel World!\n");
+	draw_string("Hello, Kernel World!\nGay");
 }
