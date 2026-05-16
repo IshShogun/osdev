@@ -35,7 +35,6 @@ struct framebuffer_t {
   uint32_t width;
   uint32_t height;
   uint8_t bpp;
-
 };
 
 struct framebuffer_t FRAMEBUFFER;
@@ -156,45 +155,6 @@ bool read_boot_info_multiboot2(unsigned long multiboot2_magic, unsigned long mul
                 break;
               }
 
-
-						//this is just drawing a line based on the bpp value, diagonal line. no config shit
-            /*for (i = 0; i < tagfb->common.framebuffer_width*/
-            /*       && i < tagfb->common.framebuffer_height; i++)*/
-            /*  {*/
-            /*    switch (tagfb->common.framebuffer_bpp)*/
-            /*      {*/
-            /*      case 8:*/
-            /*        {*/
-            /*          multiboot_uint8_t *pixel = fb*/
-            /*            + tagfb->common.framebuffer_pitch * i + i;*/
-            /*          *pixel = color;*/
-            /*        }*/
-            /*        break;*/
-            /*      case 15:*/
-            /*      case 16:*/
-            /*        {*/
-            /*          multiboot_uint16_t *pixel*/
-            /*            = fb + tagfb->common.framebuffer_pitch * i + 2 * i;*/
-            /*          *pixel = color;*/
-            /*        }*/
-            /*        break;*/
-            /*      case 24:*/
-            /*        {*/
-            /*          multiboot_uint32_t *pixel*/
-            /*            = fb + tagfb->common.framebuffer_pitch * i + 3 * i;*/
-            /*          *pixel = (color & 0xffffff) | (*pixel & 0xff000000);*/
-            /*        }*/
-            /*        break;*/
-            /**/
-            /*      case 32:*/
-            /*        {*/
-            /*          multiboot_uint32_t *pixel*/
-            /*            = fb + tagfb->common.framebuffer_pitch * i + 4 * i;*/
-            /*          *pixel = color;*/
-            /*        }*/
-            /*        break;*/
-            /*      }*/
-            /*  }*/
             break;
           }
 
@@ -238,16 +198,67 @@ void put_pixel(int pos_x, int pos_y, uint32_t color)
 }
 
 
+//TODO: SIMD in asm - compiler sucks at autovectorisation
+void* memcpy(void* dest, const void* src, size_t count){
+	size_t i = 0; 
 
+	//cpu always read at its word size - size_t is always at word size of architecture.
+	size_t n_words = count / sizeof(size_t);
+	size_t remaining_bytes = count % sizeof(size_t);
+
+	size_t* dest_ptr_word = (size_t*)dest;
+	const size_t* src_ptr_word = (const size_t*)src;
+
+	while(i < n_words){
+		dest_ptr_word[i] = src_ptr_word[i];
+		i++;
+	}
+
+	char* dest_ptr_byte = (char*)&dest_ptr_word[i];
+	const char* src_ptr_byte = (const char*)&src_ptr_word[i];
+
+	i = 0;
+	while(i < remaining_bytes){
+		dest_ptr_byte[i] = src_ptr_byte[i];	
+		i++;
+	}
+}
+
+void scroll_terminal(){
+	void* dest = (void*)FRAMEBUFFER.address;
+	//1 row from here 
+	void* src = (void*)((char*)FRAMEBUFFER.address + (FRAMEBUFFER.bytes_per_fb_row * character_height));
+
+	size_t count = FRAMEBUFFER.bytes_per_fb_row * (FRAMEBUFFER.height - character_height);
+	memcpy(dest, src, count);
+
+	//clear final row
+	uint32_t i = 0;
+	PIXEL* final_character_row_start = (PIXEL*)((char*)FRAMEBUFFER.address + 
+			(FRAMEBUFFER.height - character_height) * FRAMEBUFFER.bytes_per_fb_row); 
+
+	while(i < (FRAMEBUFFER.bytes_per_fb_row / sizeof(PIXEL)) * character_height){
+		final_character_row_start[i] = bg;
+		i++;
+	}
+}
+
+void increment_character_row(){
+	cx = 0;
+	cy += character_height;
+	//cant reliably write another character height wise
+	if(cy >= FRAMEBUFFER.height - character_height){
+		scroll_terminal();
+		cy -= character_height;
+		return;
+	}
+}
+
+
+//move framebuffer up. so from row worth of bytes from the top. copy to where we're at. then copy them to the top.
 void draw_char(char input){
 	//lets get the start byte for that glyph. char = 0 -> glyph one and so one
 	char* starting_glyph_byte = (font_glyphs + input*character_height);
-
-	if(input == '\n'){
-		cx = 0;
-		cy += character_height;
-		return;
-	}
 
 	for(size_t y = 0; y < character_height; y++){
 		for(size_t x = 0; x < character_width; x ++){
@@ -259,20 +270,39 @@ void draw_char(char input){
 
 void draw_string(char* input){
 	while(*input){
+		if(*input == '\n'){
+			increment_character_row();
+			input++;
+			continue;
+		}
+
+		//from where we're drawing we cant reliably (or at all) fit another character
 		draw_char(*input);
 		input++;
 		cx += character_width;
+		if(cx >= FRAMEBUFFER.width - character_width){
+			increment_character_row();
+		}
 	}
-
 }
 
 void kernel_main(unsigned long multiboot2_magic, unsigned long multiboot2_info_addr) 
 {
 	bool boot_success = read_boot_info_multiboot2(multiboot2_magic, multiboot2_info_addr);
 	bool font_success = parse_font();
-	
+
 	if(!boot_success || !font_success)
 		return;
 
-	draw_string("Hello, Kernel World!\nGay");
+	cy = FRAMEBUFFER.height - character_height;
+
+
+	//GOAL: have these two on top of eachother. 
+	
+	//after first draw_string we should have Hello WOrlds and an empty row under it
+	draw_string("Hello, world\n");
+	draw_string("Hello, world\n");
+	draw_string("Hello, world\n");
+	draw_string("Hello, world\n");
+	draw_string("Hello, world");
 }
