@@ -101,7 +101,8 @@ bool read_boot_info_multiboot2(unsigned long multiboot2_magic, unsigned long mul
 			//so this is really interesting, this is a compound literal - it creates an unnamed variable on the stack - %(rpb)4 etc -  and copies it into FRAMEBUFFEr
 			//HOWEVER, the compiler recognises this and optimising by just copying the values directly rather than allocate ->  copy. Good example of compiler optimisations
 			//Removes redunandt instructions
-			FRAMEBUFFER = (struct framebuffer_t){
+			FRAMEBUFFER = (struct framebuffer_t)
+			{
 				.address = (uint32_t *)(uintptr_t)  tagfb->common.framebuffer_addr,
 				.bytes_per_fb_row = tagfb->common.framebuffer_pitch,
 				.width   = tagfb->common.framebuffer_width,
@@ -173,7 +174,8 @@ uint8_t character_height;
 uint8_t character_width = 8;
 
 
-bool parse_font(){
+bool parse_font()
+{
 	struct PSF1_Header *header = (struct PSF1_Header*)&_binary_font_psf_start;
 	if(header->magic != 0x0436)
 		return false;
@@ -193,13 +195,14 @@ uint32_t bg = 0x00000000;
 //4 bytes per pixel. 32 bbp. - i can represent more colors
 void put_pixel(int pos_x, int pos_y, uint32_t color)
 {
-    uint32_t* location = (uint32_t*)((char*)FRAMEBUFFER.address + FRAMEBUFFER.bytes_per_fb_row * pos_y + pos_x * 4);
+    PIXEL* location = (PIXEL*)((char*)FRAMEBUFFER.address + FRAMEBUFFER.bytes_per_fb_row * pos_y + pos_x * 4);
     *location = color;
 }
 
 
 //TODO: SIMD in asm - compiler sucks at autovectorisation
-void* memcpy(void* dest, const void* src, size_t count){
+void* memcpy(void* dest, const void* src, size_t count)
+{
 	size_t i = 0; 
 
 	//cpu always read at its word size - size_t is always at word size of architecture.
@@ -209,7 +212,8 @@ void* memcpy(void* dest, const void* src, size_t count){
 	size_t* dest_ptr_word = (size_t*)dest;
 	const size_t* src_ptr_word = (const size_t*)src;
 
-	while(i < n_words){
+	while(i < n_words)
+	{
 		dest_ptr_word[i] = src_ptr_word[i];
 		i++;
 	}
@@ -218,13 +222,15 @@ void* memcpy(void* dest, const void* src, size_t count){
 	const char* src_ptr_byte = (const char*)&src_ptr_word[i];
 
 	i = 0;
-	while(i < remaining_bytes){
+	while(i < remaining_bytes)
+	{
 		dest_ptr_byte[i] = src_ptr_byte[i];	
 		i++;
 	}
 }
 
-void scroll_terminal(){
+void scroll_terminal()
+{
 	void* dest = (void*)FRAMEBUFFER.address;
 	//1 row from here 
 	void* src = (void*)((char*)FRAMEBUFFER.address + (FRAMEBUFFER.bytes_per_fb_row * character_height));
@@ -237,17 +243,20 @@ void scroll_terminal(){
 	PIXEL* final_character_row_start = (PIXEL*)((char*)FRAMEBUFFER.address + 
 			(FRAMEBUFFER.height - character_height) * FRAMEBUFFER.bytes_per_fb_row); 
 
-	while(i < (FRAMEBUFFER.bytes_per_fb_row / sizeof(PIXEL)) * character_height){
+	while(i < (FRAMEBUFFER.bytes_per_fb_row / sizeof(PIXEL)) * character_height)
+	{
 		final_character_row_start[i] = bg;
 		i++;
 	}
 }
 
-void increment_character_row(){
+void increment_character_row()
+{
 	cx = 0;
 	cy += character_height;
 	//cant reliably write another character height wise
-	if(cy >= FRAMEBUFFER.height - character_height){
+	if(cy >= FRAMEBUFFER.height - character_height)
+	{
 		scroll_terminal();
 		cy -= character_height;
 		return;
@@ -256,21 +265,27 @@ void increment_character_row(){
 
 
 //move framebuffer up. so from row worth of bytes from the top. copy to where we're at. then copy them to the top.
-void draw_char(char input){
+void draw_char(char input)
+{
 	//lets get the start byte for that glyph. char = 0 -> glyph one and so one
 	char* starting_glyph_byte = (font_glyphs + input*character_height);
 
-	for(size_t y = 0; y < character_height; y++){
-		for(size_t x = 0; x < character_width; x ++){
+	for(size_t y = 0; y < character_height; y++)
+	{
+		for(size_t x = 0; x < character_width; x ++)
+		{
 			if(*(starting_glyph_byte + y) & (0x80 >> x))
 				put_pixel(cx + x, cy + y, fg);
 		}
 	}
 }
 
-void draw_string(char* input){
-	while(*input){
-		if(*input == '\n'){
+void draw_string(char* input)
+{
+	while(*input)
+	{
+		if(*input == '\n')
+		{
 			increment_character_row();
 			input++;
 			continue;
@@ -280,7 +295,8 @@ void draw_string(char* input){
 		draw_char(*input);
 		input++;
 		cx += character_width;
-		if(cx >= FRAMEBUFFER.width - character_width){
+		if(cx >= FRAMEBUFFER.width - character_width)
+		{
 			increment_character_row();
 		}
 	}
@@ -300,8 +316,6 @@ void kernel_main(unsigned long multiboot2_magic, unsigned long multiboot2_info_a
 	//GOAL: have these two on top of eachother. 
 	
 	//after first draw_string we should have Hello WOrlds and an empty row under it
-	draw_string("Hello, world\n");
-	draw_string("Hello, world\n");
 	draw_string("Hello, world\n");
 	draw_string("Hello, world\n");
 	draw_string("Hello, world");
